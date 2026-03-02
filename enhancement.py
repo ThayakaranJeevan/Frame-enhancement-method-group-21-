@@ -30,8 +30,19 @@ while True:
         gaussian = cv2.GaussianBlur(gray, (3, 3), 0)
         median = cv2.medianBlur(gaussian, 3)
 
+        p2, p98 = np.percentile(median, (2, 98))
+        contrast = np.clip(median, p2, p98)
+        contrast = ((contrast - p2) / (p98 - p2) * 255).astype(np.uint8)
+        
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(contrast)
+
+
         frame_name = f"{denoised_folder}/denoised_frame_{frame_count:05d}.jpg"
         cv2.imwrite(frame_name, median)
+
+        frame_name = f"{contrast_folder}/contrast_clahe_frame_{frame_count:05d}.jpg"
+        cv2.imwrite(frame_name, enhanced)
         
         f += 1
 
@@ -41,26 +52,3 @@ cap.release()
 
 print(f"Done! {f} frames saved.")
 
-clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-
-count = 0
-
-for filename in sorted(os.listdir(denoised_folder)):
-
-    if filename.endswith(".jpg") or filename.endswith(".png"):
-
-        img_path = os.path.join(denoised_folder, filename)
-
-        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-
-        p2, p98 = np.percentile(img, (2, 98))
-        contrast = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
-
-        enhanced = clahe.apply(contrast)
-
-        output_path = os.path.join(contrast_folder, f"enhanced_{filename}")
-        cv2.imwrite(output_path, enhanced)
-
-        count += 1
-
-print(f"Done! {count} enhanced frames saved in '{contrast_folder}'")
