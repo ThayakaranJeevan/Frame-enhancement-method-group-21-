@@ -2,15 +2,23 @@ import cv2
 import os
 import numpy as np
 
+def gamma_correction(img, gamma=1.2):
+    invGamma = 1.0 / gamma
+    table = np.array([(i / 255.0) ** invGamma * 255
+                      for i in np.arange(256)]).astype("uint8")
+    return cv2.LUT(img, table)
+
 video_path = "road_1080p.mp4"
 
 original_folder = "original_frames"
 denoised_folder ="denoised_frames"
 contrast_folder = "contrast_clahe_frames"
+sharpened_folder ="sharpened_folder_frames"
 
 os.makedirs(original_folder, exist_ok=True)
 os.makedirs(denoised_folder, exist_ok=True)
 os.makedirs(contrast_folder, exist_ok=True)
+os.makedirs(sharpened_folder, exist_ok=True)
 
 cap = cv2.VideoCapture(video_path)
 
@@ -37,12 +45,17 @@ while True:
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         enhanced = clahe.apply(contrast)
 
+        gamma_img = gamma_correction(enhanced, 1.2)
+        sharpened = cv2.addWeighted(gamma_img, 1.5, gamma_img, -0.5, 0)
 
         frame_name = f"{denoised_folder}/denoised_frame_{frame_count:05d}.jpg"
         cv2.imwrite(frame_name, median)
 
         frame_name = f"{contrast_folder}/contrast_clahe_frame_{frame_count:05d}.jpg"
         cv2.imwrite(frame_name, enhanced)
+
+        frame_name = f"{sharpened_folder}/sharpened_frame_{frame_count:05d}.jpg"
+        cv2.imwrite(frame_name, sharpened)
         
         f += 1
 
