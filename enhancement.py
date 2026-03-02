@@ -1,13 +1,16 @@
 import cv2
 import os
+import numpy as np
 
 video_path = "road_1080p.mp4"
 
 original_folder = "original_frames"
 denoised_folder ="denoised_frames"
+contrast_folder = "contrast_clahe_frames"
 
 os.makedirs(original_folder, exist_ok=True)
 os.makedirs(denoised_folder, exist_ok=True)
+os.makedirs(contrast_folder, exist_ok=True)
 
 cap = cv2.VideoCapture(video_path)
 
@@ -37,3 +40,27 @@ while True:
 cap.release()
 
 print(f"Done! {f} frames saved.")
+
+clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+
+count = 0
+
+for filename in sorted(os.listdir(denoised_folder)):
+
+    if filename.endswith(".jpg") or filename.endswith(".png"):
+
+        img_path = os.path.join(denoised_folder, filename)
+
+        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+
+        p2, p98 = np.percentile(img, (2, 98))
+        contrast = cv2.normalize(img, None, 0, 255, cv2.NORM_MINMAX)
+
+        enhanced = clahe.apply(contrast)
+
+        output_path = os.path.join(contrast_folder, f"enhanced_{filename}")
+        cv2.imwrite(output_path, enhanced)
+
+        count += 1
+
+print(f"Done! {count} enhanced frames saved in '{contrast_folder}'")
