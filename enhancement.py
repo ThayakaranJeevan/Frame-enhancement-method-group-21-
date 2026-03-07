@@ -6,13 +6,48 @@ import matplotlib.gridspec as gridspec
 
 def gamma_correction(img, gamma=1.2):
     invGamma = 1.0 / gamma
-    table = np.array([(i / 255.0) ** invGamma * 255 for i in np.arange(256)]).astype("uint8")
+    table = np.array([(i / 255.0) ** invGamma * 255
+                      for i in np.arange(256)]).astype("uint8")
     return cv2.LUT(img, table)
 
-def image_metrics(img):
-    mean_val = np.mean(img)
-    std_val = np.std(img)
-    return mean_val, std_val
+def calculate_entropy(img):
+    hist = cv2.calcHist([img],[0],None,[256],[0,256])
+    hist = hist.ravel()/hist.sum()
+    hist = hist[hist>0]
+    entropy = -np.sum(hist*np.log2(hist))
+    return entropy
+
+def calculate_sharpness(img):
+    lap = cv2.Laplacian(img, cv2.CV_64F)
+    return lap.var()
+
+
+def calculate_metrics(folder):
+    files = sorted(os.listdir(folder))
+
+    mean_list = []
+    std_list = []
+    entropy_list = []
+    sharpness_list = []
+
+    for f in files:
+        path = os.path.join(folder,f)
+        img = cv2.imread(path,0)
+
+        mean_list.append(np.mean(img))
+        std_list.append(np.std(img))
+        entropy_list.append(calculate_entropy(img))
+        sharpness_list.append(calculate_sharpness(img))
+
+    return (
+        np.mean(mean_list),
+        np.mean(std_list),
+        np.mean(entropy_list),
+        np.mean(sharpness_list)
+    )
+
+
+
 
 video_path = "road_1080p.mp4"
 
@@ -37,64 +72,60 @@ os.makedirs(lap_folder, exist_ok=True)
 cap = cv2.VideoCapture(video_path)
 
 frame_count = 1
-f = 0
-
-results = []
+f=0
 
 while True:
     ret, frame = cap.read()
 
     if not ret:
-        break
-
+        break 
     if frame_count % 41 == 0:
-
         frame_name = f"{original_folder}/original_frame_{frame_count:05d}.jpg"
         cv2.imwrite(frame_name, frame)
 
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
         gaussian = cv2.GaussianBlur(gray, (3, 3), 0)
         median = cv2.medianBlur(gaussian, 3)
 
         p2, p98 = np.percentile(median, (2, 98))
         contrast = np.clip(median, p2, p98)
         contrast = ((contrast - p2) / (p98 - p2) * 255).astype(np.uint8)
-
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         clahe_enhanced = clahe.apply(contrast)
 
         gamma_img = gamma_correction(clahe_enhanced, 1.2)
-
         lap = cv2.Laplacian(gamma_img, cv2.CV_64F)
         lap = cv2.convertScaleAbs(lap)
         lap = gamma_img - lap
 
-        cv2.imwrite(f"{gray_folder}/gray_frame_{frame_count:05d}.jpg", gray)
-        cv2.imwrite(f"{gaussian_folder}/gaussian_frame_{frame_count:05d}.jpg", gaussian)
-        cv2.imwrite(f"{median_folder}/median_frame_{frame_count:05d}.jpg", median)
-        cv2.imwrite(f"{contrast_folder}/contrast_frame_{frame_count:05d}.jpg", contrast)
-        cv2.imwrite(f"{clahe_folder}/clahe_frame_{frame_count:05d}.jpg", clahe_enhanced)
-        cv2.imwrite(f"{gamma_folder}/gamma_frame_{frame_count:05d}.jpg", gamma_img)
-        cv2.imwrite(f"{lap_folder}/lap_frame_{frame_count:05d}.jpg", lap)
+        frame_name = f"{gray_folder}/gray_frame_{frame_count:05d}.jpg"
+        cv2.imwrite(frame_name, gray)
+        
+        frame_name = f"{gaussian_folder}/gaussian_frame_{frame_count:05d}.jpg"
+        cv2.imwrite(frame_name, gaussian)
 
-        mean_before, std_before = image_metrics(gray)
-        mean_after, std_after = image_metrics(lap)
+        frame_name = f"{median_folder}/median_frame_{frame_count:05d}.jpg"
+        cv2.imwrite(frame_name, median)
 
-        results.append([frame_count, mean_before, mean_after, std_before, std_after])
+        frame_name = f"{contrast_folder}/contrast_frame_{frame_count:05d}.jpg"
+        cv2.imwrite(frame_name, contrast)
 
+        frame_name = f"{clahe_folder}/clahe_frame_{frame_count:05d}.jpg"
+        cv2.imwrite(frame_name, clahe_enhanced)
+
+        frame_name = f"{gamma_folder}/gammma_frame_{frame_count:05d}.jpg"
+        cv2.imwrite(frame_name, gamma_img)
+
+        frame_name = f"{lap_folder}/lap_frame_{frame_count:05d}.jpg"
+        cv2.imwrite(frame_name, lap)
+        
         f += 1
 
     frame_count += 1
 
 cap.release()
 
-print("\nEnhancement Result Table")
-print("Frame\tMean Before\tMean After\tStd Before\tStd After")
-
-for r in results:
-    print(f"{r[0]}\t{r[1]:.2f}\t\t{r[2]:.2f}\t\t{r[3]:.2f}\t\t{r[4]:.2f}")
-
+#to print images and histograms
 folders = [
     ("Original", original_folder),
     ("Gray", gray_folder),
@@ -130,20 +161,39 @@ for i, (name, img) in enumerate(images):
 plt.tight_layout()
 plt.show()
 
-input_img = cv2.imread("gray_frames/gray_frame_00041.jpg")
-output_img = cv2.imread("lap_frames/lap_frame_00041.jpg")
+#to print the chart
+stages = [
+    ("Gray", gray_folder),
+    ("Gaussian", gaussian_folder),
+    ("Median", median_folder),
+    ("Contrast", contrast_folder),
+    ("CLAHE", clahe_folder),
+    ("Gamma", gamma_folder),
+    ("laplacian", lap_folder)
+]
 
+print("\nQuantitative Results Table")
+print("--------------------------------------------------------------------------")
+print(f"{'Stage':<10} {'Mean':<10} {'Std Dev':<10} {'Entropy':<10} {'Sharpness':<10}")
+print("--------------------------------------------------------------------------")
+
+for name, folder in stages:
+    mean, std, ent, sharp = calculate_metrics(folder)
+
+    print(f"{name:<10} {mean:<10.2f} {std:<10.2f} {ent:<10.3f} {sharp:<10.2f}")
+
+print("--------------------------------------------------------------------------")
+
+#to show the first input and final output images 
+input_img=cv2.imread("gray_frames\gray_frame_00041.jpg",0)
+output_img=cv2.imread("lap_frames\lap_frame_00041.jpg",0)
 cv2.namedWindow("input", cv2.WINDOW_NORMAL)
 cv2.resizeWindow("input", 800, 500)
-
 cv2.namedWindow("output", cv2.WINDOW_NORMAL)
 cv2.resizeWindow("output", 800, 500)
-
-cv2.imshow("input", input_img)
-cv2.imshow("output", output_img)
-
+cv2.imshow("input",input_img)
+cv2.imshow("output",output_img)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
 
 print(f"Done! {f} frames saved.")
-
